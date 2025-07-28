@@ -62,6 +62,9 @@ namespace ItemSpawnFix.Patches
         private unsafe static void TriggerFunctionBuilderPatch(IntPtr _this, IntPtr builder, IntPtr distItem, out IntPtr deepestSpawner, bool debug, Il2CppMethodInfo* methodInfo)
         {
             LG_PopulateFunctionMarkersInZoneJob job = new(_this);
+            LG_FunctionMarkerBuilder markerBuilder = new(builder);
+            RedistributeUtils.DistributeFunction = markerBuilder.GetFunction();
+
             LG_DistributeItem temp = new(distItem);
             if (job.m_fallbackMode && RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
             {
@@ -71,8 +74,14 @@ namespace ItemSpawnFix.Patches
 
                 // If resources can be distributed to existing boses, don't spawn anything
                 deepestSpawner = IntPtr.Zero;
-                if (RedistributeUtils.TryRedistributeItems(item.m_assignedNode, item.m_packs, out var remainingItems)) return;
+                if (RedistributeUtils.TryRedistributeItems(item.m_assignedNode, item.m_packs, out var remainingItems))
+                {
+                    RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+                    return;
+                }
 
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"Sending remaining items to floor spawns: {RedistributeUtils.GetPackListString(remainingItems)}");
                 // If resources remained, let them spawn on the floor
                 item.m_packs.Clear();
                 foreach (var pack in remainingItems)
@@ -106,6 +115,8 @@ namespace ItemSpawnFix.Patches
                         fallbackData.GenericFunctionItems.Enqueue(item);
                 }
             }
+
+            RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
         }
 
         private static void ChangeGenericFallbackToSpecific(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)

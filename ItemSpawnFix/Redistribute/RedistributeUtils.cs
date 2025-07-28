@@ -30,20 +30,6 @@ namespace ItemSpawnFix.Redistribute
             _seenAligns.Clear();
         }
 
-        [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
-        [HarmonyPrefix]
-        private static void Pre_BuildMarker(LG_FunctionMarkerBuilder builder)
-        {
-            DistributeFunction = builder.GetFunction();
-        }
-
-        [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
-        [HarmonyPostfix]
-        private static void Post_BuildMarker()
-        {
-            DistributeFunction = ExpeditionFunction.None;
-        }
-
         private static StorageTracker? _currentTracker;
         [HarmonyPatch(typeof(LG_ResourceContainer_Storage), nameof(LG_ResourceContainer_Storage.Setup))]
         [HarmonyPostfix]
@@ -96,6 +82,7 @@ namespace ItemSpawnFix.Redistribute
             if (Configuration.ShowDebugMessages)
                 DinoLogger.Log($"Found {validContainers.Count} containers not yet filled ({validContainers.Sum(pair => pair.slots.Count)} available slots)");
 
+            var oldTracker = _currentTracker;
             _currentTracker = null; // Prevent patch from modifying the list while we're using it
             Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int> shuffle = Enumerable.Range(0, validContainers.Count).ToArray();
             Builder.SessionSeedRandom.ShuffleArray(shuffle);
@@ -115,6 +102,7 @@ namespace ItemSpawnFix.Redistribute
             removeIndices.Sort((a, b) => b.CompareTo(a));
             foreach (var index in removeIndices)
                 validContainers.RemoveAt(index);
+            _currentTracker = oldTracker;
 
             if (remainingItems.Count > 0)
             {
