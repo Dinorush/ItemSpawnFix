@@ -12,40 +12,41 @@ using Il2Collection = Il2CppSystem.Collections.Generic;
 
 namespace ItemSpawnFix.Redistribute
 {
-    [HarmonyPatch]
+    [HarmonyPatch(typeof(LG_ResourceContainer_Storage))]
     public static class RedistributeUtils
     {
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
-        private readonly static List<Transform> _seenAligns = new();
-        private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots)>> _nodeToStorages = new();
+        private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots, LG_DistributeResourceContainer distItem)>> _zoneToStorages = new();
+        public static LG_DistributeResourceContainer? DistributeItem { get; set; } = null;
 
         public static void Init()
         {
-            LevelAPI.OnBuildStart += ClearSeenData;
-            LevelAPI.OnBuildDone += ClearSeenData;
+            LevelAPI.OnBuildStart += ClearStoredBoxes;
+            LevelAPI.OnBuildDone += ClearStoredBoxes;
         }
 
-        private static void ClearSeenData()
+        private static void ClearStoredBoxes()
         {
-            _seenAligns.Clear();
+            _zoneToStorages.Clear();
         }
 
         private static StorageTracker? _currentTracker;
-        [HarmonyPatch(typeof(LG_ResourceContainer_Storage), nameof(LG_ResourceContainer_Storage.Setup))]
+        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.Setup))]
         [HarmonyPostfix]
         private static void Post_Setup(LG_ResourceContainer_Storage __instance)
         {
-            if (DistributeFunction != ExpeditionFunction.ResourceContainerWeak) return;
+            if (DistributeFunction != ExpeditionFunction.ResourceContainerWeak || DistributeItem == null) return;
 
             var node = __instance.m_core.SpawnNode;
             if (node == null) return;
 
-            if (!_nodeToStorages.TryGetValue(node.Pointer, out var storages))
-                _nodeToStorages.Add(node.Pointer, storages = new());
-            storages.Add((__instance, _currentTracker = new(__instance)));
+            var zone = node.m_zone;
+            if (!_zoneToStorages.TryGetValue(zone.Pointer, out var storages))
+                _zoneToStorages.Add(zone.Pointer, storages = new());
+            storages.Add((__instance, _currentTracker = new(__instance), DistributeItem));
+            DistributeItem = null;
         }
 
-        [HarmonyPatch(typeof(LG_ResourceContainer_Storage))]
         [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnResourcePack))]
         [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnCommodity))]
         [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnConsumable))]
@@ -60,22 +61,22 @@ namespace ItemSpawnFix.Redistribute
             var node = __instance.m_core.SpawnNode;
             if (node == null) return;
 
-            var list = _nodeToStorages[node.Pointer];
-            if (_currentTracker.RemoveAndCheckSpace(align))
+            var list = _zoneToStorages[node.m_zone.Pointer];
+            if (!_currentTracker.RemoveAndCheckSpace(align))
                 list.RemoveAt(list.Count - 1);
         }
 
-        public static bool TryRedistributeItems(AIG_CourseNode node, Il2Collection.List<ResourceContainerSpawnData> items, out List<ResourceContainerSpawnData> remainingItems)
+        public static bool TryRedistributeItems(LG_Zone zone, Il2Collection.List<ResourceContainerSpawnData> items, out List<ResourceContainerSpawnData> remainingItems)
         {
             remainingItems = new();
             remainingItems.EnsureCapacity(items.Count);
             foreach (var pack in items)
                 remainingItems.Add(pack);
 
-            if (!_nodeToStorages.TryGetValue(node.Pointer, out var validContainers) || validContainers.Count == 0)
+            if (!_zoneToStorages.TryGetValue(zone.Pointer, out var validContainers) || validContainers.Count == 0)
             {
                 if (Configuration.ShowDebugMessages)
-                    DinoLogger.Error($"No valid containers to place {GetPackListString(remainingItems)}!");
+                    DinoLogger.Log($"No valid containers to place {GetPackListString(remainingItems)}!");
                 return false;
             }
 
@@ -89,12 +90,12 @@ namespace ItemSpawnFix.Redistribute
             List<int> removeIndices = new();
             for (int i = 0; i < shuffle.Length && remainingItems.Count > 0; i++)
             {
-                (var storage, var slots) = validContainers[shuffle[i]];
+                (var storage, var slots, var distItem) = validContainers[shuffle[i]];
                 while (slots.Count > 0 && remainingItems.Count > 0)
                 {
                     if (!slots.RemoveRandomAndCheckSpace(out var slot))
                         removeIndices.Add(shuffle[i]);
-                    SpawnItem(storage, slot, remainingItems[^1]);
+                    SpawnItem(storage, slot, remainingItems[^1], distItem);
                     remainingItems.RemoveAt(remainingItems.Count - 1);
                 }
             }
@@ -107,14 +108,15 @@ namespace ItemSpawnFix.Redistribute
             if (remainingItems.Count > 0)
             {
                 if (Configuration.ShowDebugMessages)
-                    DinoLogger.Error($"No remaining containers to place {GetPackListString(remainingItems)}!");
+                    DinoLogger.Log($"No remaining containers to place {GetPackListString(remainingItems)}!");
                 return false;
             }
             return true;
         }
 
-        private static void SpawnItem(LG_ResourceContainer_Storage storage, StorageSlot storageSlot, ResourceContainerSpawnData data)
+        private static void SpawnItem(LG_ResourceContainer_Storage storage, StorageSlot storageSlot, ResourceContainerSpawnData data, LG_DistributeResourceContainer distItem)
         {
+            distItem.m_packs.Add(data);
             int seed = Builder.SessionSeedRandom.Range(0, int.MaxValue);
             switch (data.m_type)
             {

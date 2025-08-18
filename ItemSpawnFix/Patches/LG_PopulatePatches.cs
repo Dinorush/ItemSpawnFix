@@ -74,7 +74,7 @@ namespace ItemSpawnFix.Patches
 
                 // If resources can be distributed to existing boses, don't spawn anything
                 deepestSpawner = IntPtr.Zero;
-                if (RedistributeUtils.TryRedistributeItems(item.m_assignedNode, item.m_packs, out var remainingItems))
+                if (RedistributeUtils.TryRedistributeItems(item.m_assignedNode.m_zone, item.m_packs, out var remainingItems))
                 {
                     RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
                     return;
@@ -90,6 +90,8 @@ namespace ItemSpawnFix.Patches
                 resourceBuilder.m_packs = item.m_packs;
             }
 
+            if (RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
+                RedistributeUtils.DistributeItem = new(distItem);
             orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
 
             if (!job.m_fallbackMode && deepestSpawner == IntPtr.Zero)
