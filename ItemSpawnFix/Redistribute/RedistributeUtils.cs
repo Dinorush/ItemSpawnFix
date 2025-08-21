@@ -1,8 +1,8 @@
-﻿using AIGraph;
-using GameData;
+﻿using GameData;
 using GTFO.API;
 using HarmonyLib;
 using LevelGeneration;
+using SNetwork;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,7 +17,9 @@ namespace ItemSpawnFix.Redistribute
     {
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
         private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots, LG_DistributeResourceContainer distItem)>> _zoneToStorages = new();
+        private readonly static Dictionary<IntPtr, GameObject> _failedDistContainers = new();
         public static LG_DistributeResourceContainer? DistributeItem { get; set; } = null;
+        private static StorageTracker? _currentTracker;
 
         public static void Init()
         {
@@ -28,42 +30,42 @@ namespace ItemSpawnFix.Redistribute
         private static void ClearStoredBoxes()
         {
             _zoneToStorages.Clear();
+            _failedDistContainers.Clear();
         }
 
-        private static StorageTracker? _currentTracker;
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.Setup))]
-        [HarmonyPostfix]
-        private static void Post_Setup(LG_ResourceContainer_Storage __instance)
+        internal static void OnContainerStorageSpawned(LG_ResourceContainer_Storage storage)
         {
             if (DistributeFunction != ExpeditionFunction.ResourceContainerWeak || DistributeItem == null) return;
 
-            var node = __instance.m_core.SpawnNode;
+            var node = storage.m_core.SpawnNode;
             if (node == null) return;
 
             var zone = node.m_zone;
             if (!_zoneToStorages.TryGetValue(zone.Pointer, out var storages))
                 _zoneToStorages.Add(zone.Pointer, storages = new());
-            storages.Add((__instance, _currentTracker = new(__instance), DistributeItem));
+            storages.Add((storage, _currentTracker = new(storage), DistributeItem));
             DistributeItem = null;
         }
 
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnResourcePack))]
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnCommodity))]
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnConsumable))]
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.PlaceKeyCard))]
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.PlaceSmallGenericPickup))]
-        [HarmonyPatch(nameof(LG_ResourceContainer_Storage.SpawnArtifact))]
-        [HarmonyPostfix]
-        private static void Post_SpawnItem(LG_ResourceContainer_Storage __instance, Transform align)
+        internal static void OnContainerItemSpawned(LG_ResourceContainer_Storage storage, Transform align)
         {
             if (DistributeFunction != ExpeditionFunction.ResourceContainerWeak || _currentTracker == null) return;
 
-            var node = __instance.m_core.SpawnNode;
+            var node = storage.m_core.SpawnNode;
             if (node == null) return;
 
             var list = _zoneToStorages[node.m_zone.Pointer];
             if (!_currentTracker.RemoveAndCheckSpace(align))
                 list.RemoveAt(list.Count - 1);
+        }
+
+        internal static void AddFailedDistItem(IntPtr distItemPtr, GameObject spawnedGO) => _failedDistContainers.Add(distItemPtr, spawnedGO);
+
+        internal static void OnDistributionDone()
+        { 
+            foreach (var spawnedGO in _failedDistContainers.Values)
+                SNet.DestroySelfManagedReplicatedObject(spawnedGO);
+            _failedDistContainers.Clear();
         }
 
         public static bool TryRedistributeItems(LG_Zone zone, Il2Collection.List<ResourceContainerSpawnData> items, out List<ResourceContainerSpawnData> remainingItems)

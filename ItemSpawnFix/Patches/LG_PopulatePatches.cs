@@ -1,17 +1,22 @@
-﻿using BepInEx.Unity.IL2CPP.Hook;
+﻿using AIGraph;
+using BepInEx.Unity.IL2CPP.Hook;
+using GameData;
 using GTFO.API;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Runtime;
+using ItemSpawnFix.Redistribute;
 using LevelGeneration;
 using System;
-using GameData;
-using ItemSpawnFix.Redistribute;
+using System.Collections.Generic;
 
 namespace ItemSpawnFix.Patches
 {
     [HarmonyPatch]
     internal static class LG_PopulatePatches
     {
+        private readonly static List<AIG_CourseNode> _validNodes = new();
+        private static int _currZoneID = 0;
+
         [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
         [HarmonyWrapSafe]
         [HarmonyPriority(Priority.Low)]
@@ -57,25 +62,37 @@ namespace ItemSpawnFix.Patches
                 TriggerFunctionBuilderPatch,
                 out orig_TriggerFunctionBuilder
                 );
+
+            LevelAPI.OnBuildStart += () => _currZoneID = 0;
         }
 
         private unsafe static void TriggerFunctionBuilderPatch(IntPtr _this, IntPtr builder, IntPtr distItem, out IntPtr deepestSpawner, bool debug, Il2CppMethodInfo* methodInfo)
         {
             LG_PopulateFunctionMarkersInZoneJob job = new(_this);
             LG_FunctionMarkerBuilder markerBuilder = new(builder);
+            LG_DistributeItem item = new(distItem);
             RedistributeUtils.DistributeFunction = markerBuilder.GetFunction();
 
-            LG_DistributeItem temp = new(distItem);
+            if (item.ShouldBeRemoved())
+            {
+                deepestSpawner = IntPtr.Zero;
+                return;
+            }
+
+            // Fallback functionality is handled manually. This avoids the need to remove it.
+            item.m_allowFunctionFallback = false;
+            var zone = item.m_assignedNode.m_zone;
+
             if (job.m_fallbackMode && RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
             {
-                LG_DistributeResourceContainer item = new(distItem);
+                LG_DistributeResourceContainer distRes = new(distItem);
                 if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"No markers left in {item.m_assignedNode.m_zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, redistributing {RedistributeUtils.GetPackListString(item.m_packs)}");
+                    DinoLogger.Log($"Redistributing floor-spawned {RedistributeUtils.GetPackListString(distRes.m_packs)} to existing containers");
 
                 // If resources can be distributed to existing boses, don't spawn anything
-                deepestSpawner = IntPtr.Zero;
-                if (RedistributeUtils.TryRedistributeItems(item.m_assignedNode.m_zone, item.m_packs, out var remainingItems))
+                if (RedistributeUtils.TryRedistributeItems(zone, distRes.m_packs, out var remainingItems))
                 {
+                    deepestSpawner = IntPtr.Zero;
                     RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
                     return;
                 }
@@ -83,11 +100,11 @@ namespace ItemSpawnFix.Patches
                 if (Configuration.ShowDebugMessages)
                     DinoLogger.Log($"Sending remaining items to floor spawns: {RedistributeUtils.GetPackListString(remainingItems)}");
                 // If resources remained, let them spawn on the floor
-                item.m_packs.Clear();
+                distRes.m_packs.Clear();
                 foreach (var pack in remainingItems)
-                    item.m_packs.Add(pack);
+                    distRes.m_packs.Add(pack);
                 LG_ResourceContainerBuilder resourceBuilder = new(builder);
-                resourceBuilder.m_packs = item.m_packs;
+                resourceBuilder.m_packs = distRes.m_packs;
             }
 
             if (RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
@@ -96,48 +113,59 @@ namespace ItemSpawnFix.Patches
 
             if (!job.m_fallbackMode && deepestSpawner == IntPtr.Zero)
             {
-                LG_DistributeItem item = new(distItem);
-                if (item.m_allowFunctionFallback)
-                {
-                    if (Configuration.ShowDebugMessages)
-                        DinoLogger.Log($"No markers remaining for {item.m_assignedNode.m_zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, moving to floor fallback");
-                    ChangeGenericFallbackToSpecific(job, item);
-                }
-                else
-                {
-                    if (Configuration.ShowDebugMessages)
-                        DinoLogger.Log($"No marker spawner found for {item.m_assignedNode.m_zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, moving to floor fallback");
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"No markers remaining for {zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, placing in random area in zone");
 
-                    var fallbackData = job.m_zone.DistributionDataFallback;
-                    if (item.m_function == ExpeditionFunction.ResourceContainerWeak)
-                        fallbackData.ResourceContainerItems.Enqueue(item.Cast<LG_DistributeResourceContainer>());
-                    else if (item.m_function == ExpeditionFunction.SmallPickupItem || item.m_function == ExpeditionFunction.BigPickupItem)
-                        fallbackData.PickupItems.Enqueue(item.Cast<LG_DistributePickUpItem>());
-                    else
-                        fallbackData.GenericFunctionItems.Enqueue(item);
+                if (_currZoneID != zone.ID)
+                {
+                    _currZoneID = zone.ID;
+                    _validNodes.Clear();
+                    foreach (var area in zone.m_areas)
+                        _validNodes.Add(area.m_courseNode);
                 }
+
+                var node = item.m_assignedNode;
+                for (int i = _validNodes.Count - 1; i >= 0; i--)
+                    if (_validNodes[i].NodeID == node.NodeID)
+                        _validNodes.RemoveAt(i);
+
+                while (_validNodes.Count > 0)
+                {
+                    int index = Builder.SessionSeedRandom.Range(0, _validNodes.Count, "LG_PopulateFunctionMarkersInZone_Retry_Zone");
+                    markerBuilder.m_node = _validNodes[index];
+                    item.m_assignedNode = _validNodes[index];
+                    orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
+                    if (deepestSpawner == IntPtr.Zero)
+                        _validNodes.RemoveAt(index);
+                    else
+                        break;
+                }
+
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"No markers remaining for {zone.NavInfo.ToString()}, moving to floor fallback");
+                markerBuilder.m_node = node;
+                item.m_assignedNode = node;
+
+                AddToFallbackQueue(job, item);
             }
 
             RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
         }
 
-        private static void ChangeGenericFallbackToSpecific(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)
+        private static void AddToFallbackQueue(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)
         {
             var fallbackData = job.m_zone.DistributionDataFallback;
-            switch (distItem.m_function)
-            {
-                case ExpeditionFunction.ResourceContainerWeak:
-                    fallbackData.ResourceContainerItems.Enqueue(distItem.Cast<LG_DistributeResourceContainer>());
-                    break;
-                case ExpeditionFunction.SmallPickupItem:
-                case ExpeditionFunction.BigPickupItem:
-                    fallbackData.PickupItems.Enqueue(distItem.Cast<LG_DistributePickUpItem>());
-                    break;
-                default:
-                    return;
-            }
+            if (distItem.m_function == ExpeditionFunction.ResourceContainerWeak)
+                fallbackData.ResourceContainerItems.Enqueue(distItem.Cast<LG_DistributeResourceContainer>());
+            else if (distItem.m_function == ExpeditionFunction.SmallPickupItem || distItem.m_function == ExpeditionFunction.BigPickupItem)
+                fallbackData.PickupItems.Enqueue(distItem.Cast<LG_DistributePickUpItem>());
+            else
+                fallbackData.GenericFunctionItems.Enqueue(distItem);
+        }
 
-            var queue = fallbackData.GenericFunctionItems.m_itemQueue;
+        private static void PopFallbackQueue(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)
+        {
+            var queue = job.m_zone.DistributionDataFallback.GenericFunctionItems.m_itemQueue;
             var lastPos = (queue._tail - 1 + queue._array.Count) % queue._array.Count;
             if (queue._array[lastPos].Pointer == distItem.Pointer)
             {
