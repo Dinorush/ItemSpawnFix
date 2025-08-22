@@ -15,7 +15,7 @@ namespace ItemSpawnFix.Patches
     internal static class LG_PopulatePatches
     {
         private readonly static List<AIG_CourseNode> _validNodes = new();
-        private static int _currZoneID = 0;
+        private static int _currZoneID = -1;
 
         [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
         [HarmonyWrapSafe]
@@ -36,7 +36,6 @@ namespace ItemSpawnFix.Patches
                     return true;
             }
 
-            RedistributeUtils.DistributeFunction = distItem.m_function;
             __instance.TriggerFunctionBuilder(builder, distItem, out _);
             return false;
         }
@@ -63,7 +62,7 @@ namespace ItemSpawnFix.Patches
                 out orig_TriggerFunctionBuilder
                 );
 
-            LevelAPI.OnBuildStart += () => _currZoneID = 0;
+            LevelAPI.OnBuildStart += () => _currZoneID = -1;
         }
 
         private unsafe static void TriggerFunctionBuilderPatch(IntPtr _this, IntPtr builder, IntPtr distItem, out IntPtr deepestSpawner, bool debug, Il2CppMethodInfo* methodInfo)
@@ -71,7 +70,7 @@ namespace ItemSpawnFix.Patches
             LG_PopulateFunctionMarkersInZoneJob job = new(_this);
             LG_FunctionMarkerBuilder markerBuilder = new(builder);
             LG_DistributeItem item = new(distItem);
-            RedistributeUtils.DistributeFunction = markerBuilder.GetFunction();
+            var function = RedistributeUtils.DistributeFunction = item.m_function;
 
             if (item.ShouldBeRemoved())
             {
@@ -79,15 +78,15 @@ namespace ItemSpawnFix.Patches
                 return;
             }
 
-            // Fallback functionality is handled manually. This avoids the need to remove it.
+            // Fallback functionality is handled manually. This avoids the original function adding it to the wrong queue.
             item.m_allowFunctionFallback = false;
             var zone = item.m_assignedNode.m_zone;
 
-            if (job.m_fallbackMode && RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
+            if (job.m_fallbackMode && function == ExpeditionFunction.ResourceContainerWeak)
             {
                 LG_DistributeResourceContainer distRes = new(distItem);
                 if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"Redistributing floor-spawned {RedistributeUtils.GetPackListString(distRes.m_packs)} to existing containers");
+                    DinoLogger.Log($"Redistributing floor-spawned container with {RedistributeUtils.GetPackListString(distRes.m_packs)} to existing containers");
 
                 // If resources can be distributed to existing boses, don't spawn anything
                 if (RedistributeUtils.TryRedistributeItems(zone, distRes.m_packs, out var remainingItems))
@@ -107,15 +106,10 @@ namespace ItemSpawnFix.Patches
                 resourceBuilder.m_packs = distRes.m_packs;
             }
 
-            if (RedistributeUtils.DistributeFunction == ExpeditionFunction.ResourceContainerWeak)
-                RedistributeUtils.DistributeItem = new(distItem);
             orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
 
             if (!job.m_fallbackMode && deepestSpawner == IntPtr.Zero)
             {
-                if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"No markers remaining for {zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, placing in random area in zone");
-
                 if (_currZoneID != zone.ID)
                 {
                     _currZoneID = zone.ID;
@@ -123,11 +117,19 @@ namespace ItemSpawnFix.Patches
                     foreach (var area in zone.m_areas)
                         _validNodes.Add(area.m_courseNode);
                 }
+                
+                if (Configuration.ShowDebugMessages && _validNodes.Count > 0)
+                    DinoLogger.Log($"No markers remaining for distribute {function} in {zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, placing in random area in zone");
 
                 var node = item.m_assignedNode;
                 for (int i = _validNodes.Count - 1; i >= 0; i--)
+                {
                     if (_validNodes[i].NodeID == node.NodeID)
+                    {
                         _validNodes.RemoveAt(i);
+                        break;
+                    }
+                }
 
                 while (_validNodes.Count > 0)
                 {
@@ -141,12 +143,15 @@ namespace ItemSpawnFix.Patches
                         break;
                 }
 
-                if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"No markers remaining for {zone.NavInfo.ToString()}, moving to floor fallback");
-                markerBuilder.m_node = node;
-                item.m_assignedNode = node;
+                if (deepestSpawner == IntPtr.Zero)
+                {
+                    if (Configuration.ShowDebugMessages)
+                        DinoLogger.Log($"No markers remaining for distribute {function} in {zone.NavInfo.ToString()}, moving to floor fallback");
+                    markerBuilder.m_node = node;
+                    item.m_assignedNode = node;
 
-                AddToFallbackQueue(job, item);
+                    AddToFallbackQueue(job, item);
+                }
             }
 
             RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
@@ -161,18 +166,6 @@ namespace ItemSpawnFix.Patches
                 fallbackData.PickupItems.Enqueue(distItem.Cast<LG_DistributePickUpItem>());
             else
                 fallbackData.GenericFunctionItems.Enqueue(distItem);
-        }
-
-        private static void PopFallbackQueue(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)
-        {
-            var queue = job.m_zone.DistributionDataFallback.GenericFunctionItems.m_itemQueue;
-            var lastPos = (queue._tail - 1 + queue._array.Count) % queue._array.Count;
-            if (queue._array[lastPos].Pointer == distItem.Pointer)
-            {
-                queue._array[lastPos] = null;
-                queue._tail = lastPos;
-                queue._size--;
-            }
         }
     }
 }

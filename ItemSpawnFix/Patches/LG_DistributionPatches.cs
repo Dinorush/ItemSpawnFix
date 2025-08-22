@@ -6,7 +6,6 @@ using Il2CppInterop.Runtime.Runtime.VersionSpecific.Class;
 using Il2CppInterop.Runtime.Runtime.VersionSpecific.MethodInfo;
 using LevelGeneration;
 using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace ItemSpawnFix.Patches
@@ -14,15 +13,6 @@ namespace ItemSpawnFix.Patches
     [HarmonyPatch]
     internal static class LG_DistributionPatches
     {
-        private readonly static Dictionary<IntPtr, LG_DistributeResourceContainer> _distItems = new();
-        [HarmonyPatch(typeof(LG_DistributeResourceContainer), nameof(LG_DistributeResourceContainer.ShouldBeRemoved))]
-        [HarmonyPostfix]
-        private static void Post_ShouldBeRemoved(ref bool __result)
-        {
-            // Cancel resource containers being removed automatically
-            __result = false;
-        }
-
         private static bool _inDistribute = false;
         [HarmonyPatch(typeof(LG_Distribute_ResourcePacksPerZone), nameof(LG_Distribute_ResourcePacksPerZone.Build))]
         [HarmonyPrefix]
