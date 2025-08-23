@@ -11,13 +11,20 @@ using System.Collections.Generic;
 
 namespace ItemSpawnFix.Patches
 {
-    [HarmonyPatch]
+    [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob))]
     internal static class LG_PopulatePatches
     {
         private readonly static List<AIG_CourseNode> _validNodes = new();
         private static int _currZoneID = -1;
 
-        [HarmonyPatch(typeof(LG_PopulateFunctionMarkersInZoneJob), nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
+        [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.Build))]
+        [HarmonyPostfix]
+        private static void PostBuild()
+        {
+            RedistributeUtils.OnZoneFinished();
+        }
+
+        [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
         [HarmonyWrapSafe]
         [HarmonyPriority(Priority.Low)]
         [HarmonyPrefix]
@@ -71,45 +78,57 @@ namespace ItemSpawnFix.Patches
             LG_FunctionMarkerBuilder markerBuilder = new(builder);
             LG_DistributeItem item = new(distItem);
             var function = RedistributeUtils.DistributeFunction = item.m_function;
+            // ShouldBeRemoved is overriden for boxes to allow redistributing
+            bool isRes = function == ExpeditionFunction.ResourceContainerWeak;
+            LG_DistributeResourceContainer distRes = isRes ? new(distItem) : null!;
+            bool empty = isRes ? distRes.m_packs.Count == 0 : item.ShouldBeRemoved();
 
-            if (item.ShouldBeRemoved())
+            if (job.m_fallbackMode)
             {
-                deepestSpawner = IntPtr.Zero;
+                var node = item.m_assignedNode;
+                var areaString = node.m_area.m_navInfo.ToString();
+                var zoneString = node.m_zone.NavInfo.ToString();
+                if (!empty && Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"Creating {function} with floor fallback in {zoneString} {areaString}");
+
+                if (empty)
+                    deepestSpawner = IntPtr.Zero;
+                else if (isRes && TryRedistributeItems(item.m_assignedNode, distRes, empty: false))
+                    deepestSpawner = IntPtr.Zero;
+                else
+                    orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
+
+                RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
                 return;
             }
 
             // Fallback functionality is handled manually. This avoids the original function adding it to the wrong queue.
             item.m_allowFunctionFallback = false;
-            var zone = item.m_assignedNode.m_zone;
 
-            if (job.m_fallbackMode && function == ExpeditionFunction.ResourceContainerWeak)
+            orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
+
+            if (empty)
             {
-                LG_DistributeResourceContainer distRes = new(distItem);
-                if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"Redistributing floor-spawned container with {RedistributeUtils.GetPackListString(distRes.m_packs)} to existing containers");
+                RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+                return;
+            }
 
-                // If resources can be distributed to existing boses, don't spawn anything
-                if (RedistributeUtils.TryRedistributeItems(zone, distRes.m_packs, out var remainingItems))
+            if (deepestSpawner == IntPtr.Zero)
+            {
+                var node = item.m_assignedNode;
+                var areaString = node.m_area.m_navInfo.ToString();
+                var zone = node.m_zone;
+                var zoneString = zone.NavInfo.ToString();
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"No markers remaining for distribute {function} in {zoneString} {areaString} trying to redistribute");
+
+                if (isRes && TryRedistributeItems(node, distRes, empty: true))
                 {
                     deepestSpawner = IntPtr.Zero;
                     RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
                     return;
                 }
 
-                if (Configuration.ShowDebugMessages)
-                    DinoLogger.Log($"Sending remaining items to floor spawns: {RedistributeUtils.GetPackListString(remainingItems)}");
-                // If resources remained, let them spawn on the floor
-                distRes.m_packs.Clear();
-                foreach (var pack in remainingItems)
-                    distRes.m_packs.Add(pack);
-                LG_ResourceContainerBuilder resourceBuilder = new(builder);
-                resourceBuilder.m_packs = distRes.m_packs;
-            }
-
-            orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
-
-            if (!job.m_fallbackMode && deepestSpawner == IntPtr.Zero)
-            {
                 if (_currZoneID != zone.ID)
                 {
                     _currZoneID = zone.ID;
@@ -117,19 +136,10 @@ namespace ItemSpawnFix.Patches
                     foreach (var area in zone.m_areas)
                         _validNodes.Add(area.m_courseNode);
                 }
-                
-                if (Configuration.ShowDebugMessages && _validNodes.Count > 0)
-                    DinoLogger.Log($"No markers remaining for distribute {function} in {zone.NavInfo.ToString()} {item.m_assignedNode.m_area.m_navInfo.ToString()}, placing in random area in zone");
 
-                var node = item.m_assignedNode;
-                for (int i = _validNodes.Count - 1; i >= 0; i--)
-                {
-                    if (_validNodes[i].NodeID == node.NodeID)
-                    {
-                        _validNodes.RemoveAt(i);
-                        break;
-                    }
-                }
+                int removeIndex = _validNodes.FindLastIndex(n => n.NodeID == node.NodeID);
+                if (removeIndex >= 0)
+                    _validNodes.RemoveAt(removeIndex);
 
                 while (_validNodes.Count > 0)
                 {
@@ -140,21 +150,63 @@ namespace ItemSpawnFix.Patches
                     if (deepestSpawner == IntPtr.Zero)
                         _validNodes.RemoveAt(index);
                     else
-                        break;
+                    {
+                        if (Configuration.ShowDebugMessages)
+                            DinoLogger.Log($"Redistributed {function} to {zoneString} {_validNodes[index].m_area.m_navInfo.ToString()} (orig: {areaString})");
+                        RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+                        return;
+                    }
                 }
 
-                if (deepestSpawner == IntPtr.Zero)
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"No markers available in {zoneString}");
+
+                if (isRes && TryRedistributeItems(node, distRes, empty: false))
                 {
-                    if (Configuration.ShowDebugMessages)
-                        DinoLogger.Log($"No markers remaining for distribute {function} in {zone.NavInfo.ToString()}, moving to floor fallback");
-                    markerBuilder.m_node = node;
-                    item.m_assignedNode = node;
-
-                    AddToFallbackQueue(job, item);
+                    deepestSpawner = IntPtr.Zero;
+                    RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+                    return;
                 }
+
+                markerBuilder.m_node = node;
+                item.m_assignedNode = node;
+
+                // Everything failed, spawn on the floor
+                if (Configuration.ShowDebugMessages)
+                    DinoLogger.Log($"Unable to redistribute {function} in {zoneString}, moving to floor fallback in {areaString}");
+
+                AddToFallbackQueue(job, item);
             }
 
             RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+        }
+
+        private static bool TryRedistributeItems(AIG_CourseNode node, LG_DistributeResourceContainer distRes, bool empty)
+        {
+            var zoneString = node.m_zone.NavInfo.ToString();
+            // If resources can be distributed to boxes, don't spawn anything
+            if (RedistributeUtils.TryRedistributeItems(node, distRes.m_packs, out var remainingItems, empty))
+            {
+                if (empty)
+                    DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to empty containers in {zoneString}");
+                else
+                    DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to containers in {zoneString}");
+                return true;
+            }
+
+            if (Configuration.ShowDebugMessages)
+            {
+                if (empty)
+                    DinoLogger.Log($"Not enough empty containers in {zoneString}, sending remaining items to new container spawns: {RedistributeUtils.GetPackListString(remainingItems)}");
+                else
+                    DinoLogger.Log($"Not enough containers in {zoneString}, sending remaining items to floor container spawns: {RedistributeUtils.GetPackListString(remainingItems)}");
+            }
+
+            // If resources remained, let them spawn on the floor
+            distRes.m_packs.Clear();
+            foreach (var pack in remainingItems)
+                distRes.m_packs.Add(pack);
+            return false;
         }
 
         private static void AddToFallbackQueue(LG_PopulateFunctionMarkersInZoneJob job, LG_DistributeItem distItem)

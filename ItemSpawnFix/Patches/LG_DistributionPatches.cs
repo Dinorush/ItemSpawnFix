@@ -14,6 +14,14 @@ namespace ItemSpawnFix.Patches
     internal static class LG_DistributionPatches
     {
         private static bool _inDistribute = false;
+
+        [HarmonyPatch(typeof(LG_DistributeResourceContainer), nameof(LG_DistributeResourceContainer.ShouldBeRemoved))]
+        [HarmonyPostfix]
+        private static void Post_ShouldBeRemoved(ref bool __result)
+        {
+            __result = false;
+        }
+
         [HarmonyPatch(typeof(LG_Distribute_ResourcePacksPerZone), nameof(LG_Distribute_ResourcePacksPerZone.Build))]
         [HarmonyPrefix]
         private static void Pre_Build()

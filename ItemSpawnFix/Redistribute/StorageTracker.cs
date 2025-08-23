@@ -9,6 +9,7 @@ namespace ItemSpawnFix.Redistribute
     public class StorageTracker
     {
         private readonly List<(StorageSlot slot, HashSet<IntPtr> alignSet)> _slotAligns;
+        private readonly int _maxCount;
 
         public StorageTracker(LG_ResourceContainer_Storage storage)
         {
@@ -24,6 +25,7 @@ namespace ItemSpawnFix.Redistribute
                 TryAddAlign(slot.Consumable, alignSet);
                 TryAddAlign(slot.Keycard, alignSet);
             }
+            _maxCount = _slotAligns.Count;
         }
 
         private void TryAddAlign(Transform align, HashSet<IntPtr> alignSet)
@@ -32,6 +34,7 @@ namespace ItemSpawnFix.Redistribute
                 alignSet.Add(align.Pointer);
         }
 
+        public bool Unused => _slotAligns.Count == _maxCount;
         public int Count => _slotAligns.Count;
 
         public bool RemoveRandomAndCheckSpace(out StorageSlot slot)
