@@ -40,7 +40,7 @@ namespace ItemSpawnFix.Redistribute
         internal static void OnZoneFinished()
         {
             foreach ((var storage, var _) in _storagesEmpty)
-                SNet.DestroySelfManagedReplicatedObject(storage.gameObject);
+                SNet.DestroySelfManagedReplicatedObject(storage.transform.parent.gameObject);
 
             _storages.Clear();
             _storagesEmpty.Clear();

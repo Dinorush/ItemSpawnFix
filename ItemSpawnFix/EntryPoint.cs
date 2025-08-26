@@ -6,7 +6,7 @@ using ItemSpawnFix.Redistribute;
 
 namespace ItemSpawnFix
 {
-    [BepInPlugin("Dinorush." + MODNAME, MODNAME, "1.0.4")]
+    [BepInPlugin("Dinorush." + MODNAME, MODNAME, "1.0.5")]
     internal sealed class EntryPoint : BasePlugin
     {
         public const string MODNAME = "ItemSpawnFix";

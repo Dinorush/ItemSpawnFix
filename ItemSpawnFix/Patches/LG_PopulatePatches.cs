@@ -170,7 +170,6 @@ namespace ItemSpawnFix.Patches
 
                 markerBuilder.m_node = node;
                 item.m_assignedNode = node;
-
                 // Everything failed, spawn on the floor
                 if (Configuration.ShowDebugMessages)
                     DinoLogger.Log($"Unable to redistribute {function} in {zoneString}, moving to floor fallback in {areaString}");
