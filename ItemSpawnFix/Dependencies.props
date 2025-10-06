@@ -31,5 +31,6 @@
 	<!-- Plugins -->
 	<ItemGroup>
 		<Reference Include="$(PluginsFolder)/GTFO-API.dll" Private="false" />
+		<Reference Include="$(PluginsFolder)\**\MTFO.dll" Private="false" />
 	</ItemGroup>
 </Project>

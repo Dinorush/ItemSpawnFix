@@ -4,6 +4,7 @@ using GameData;
 using GTFO.API;
 using HarmonyLib;
 using Il2CppInterop.Runtime.Runtime;
+using ItemSpawnFix.CustomSettings;
 using ItemSpawnFix.Redistribute;
 using LevelGeneration;
 using System;
@@ -54,7 +55,7 @@ namespace ItemSpawnFix.Patches
         [HarmonyPrefix]
         private static bool OverrideBuildOrder(LG_PopulateFunctionMarkersInZoneJob __instance, ref bool __result)
         {
-            if (!Configuration.RaiseObjectPriority) return true;
+            if (!SettingsManager.ActiveSettings.RaiseObjectSpawnPriority) return true;
 
             __result = false;
             if (!__instance.BuildGenericFunctionItems(eDistributionQueue.PrioritizedFunctionItems))
@@ -88,7 +89,7 @@ namespace ItemSpawnFix.Patches
         [HarmonyPrefix]
         private static bool AllowRedistributeGeneric(LG_PopulateFunctionMarkersInZoneJob __instance, eDistributionQueue queue, ref bool __result)
         {
-            if (!Configuration.AllowMoveObjects) return true;
+            if (!SettingsManager.ActiveSettings.AllowRedistributeObjects) return true;
 
             LG_DistributeItem item;
             DistributeItemQueueWrapper<LG_DistributeItem> wrapper;

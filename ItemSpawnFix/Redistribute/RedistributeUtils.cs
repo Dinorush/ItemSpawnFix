@@ -2,6 +2,7 @@
 using GameData;
 using GTFO.API;
 using HarmonyLib;
+using ItemSpawnFix.CustomSettings;
 using LevelGeneration;
 using SNetwork;
 using System;
@@ -18,6 +19,7 @@ namespace ItemSpawnFix.Redistribute
     {
         public static System.Random Random { get; private set; } = new();
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
+
         private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storages = new();
         private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storagesEmpty = new();
         private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots)>> _nodeStorages = new();
