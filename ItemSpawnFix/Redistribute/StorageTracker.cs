@@ -39,7 +39,7 @@ namespace ItemSpawnFix.Redistribute
 
         public bool RemoveRandomAndCheckSpace(out StorageSlot slot)
         {
-            var index = Builder.SessionSeedRandom.Range(0, Count);
+            var index = RedistributeUtils.Random.Next(0, Count);
             slot = _slotAligns[index].slot;
             _slotAligns.RemoveAt(index);
             return Count > 0;

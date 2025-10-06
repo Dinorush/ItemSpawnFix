@@ -16,6 +16,7 @@ namespace ItemSpawnFix.Redistribute
     [HarmonyPatch(typeof(LG_ResourceContainer_Storage))]
     public static class RedistributeUtils
     {
+        public static System.Random Random { get; private set; } = new();
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
         private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storages = new();
         private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storagesEmpty = new();
@@ -31,6 +32,7 @@ namespace ItemSpawnFix.Redistribute
         // JFS - Should be cleared by OnZoneFinished
         private static void OnBuildStart()
         {
+            SetSeed(Builder.BuildSeedRandom.Seed);
             _storages.Clear();
             _storagesEmpty.Clear();
             _nodeStorages.Clear();
@@ -93,6 +95,8 @@ namespace ItemSpawnFix.Redistribute
             }
         }
 
+        public static void SetSeed(int seed) => Random = new(seed);
+
         public static bool TryRedistributeItems(AIG_CourseNode node, Il2Collection.List<ResourceContainerSpawnData> items, out List<ResourceContainerSpawnData> remainingItems, bool empty)
         {
             remainingItems = new();
@@ -126,8 +130,8 @@ namespace ItemSpawnFix.Redistribute
 
             var oldTracker = _currentTracker;
             _currentTracker = null; // Prevent patch from modifying the list while we're using it
-            Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int> shuffle = Enumerable.Range(0, storages.Count).ToArray();
-            Builder.SessionSeedRandom.ShuffleArray(shuffle);
+            var shuffle = Enumerable.Range(0, storages.Count).ToArray();
+            Shuffle(shuffle);
             List<int> removeIndices = new();
             for (int i = 0; i < shuffle.Length && items.Count > 0; i++)
             {
@@ -160,9 +164,19 @@ namespace ItemSpawnFix.Redistribute
             return items.Count > 0;
         }
 
+        private static void Shuffle<T>(T[] array)
+        {
+            int num = array.Length;
+            while (num > 1)
+            {
+                int num2 = Random.Next(0, num--);
+                (array[num2], array[num]) = (array[num], array[num2]);
+            }
+        }
+
         private static void SpawnItem(LG_ResourceContainer_Storage storage, StorageSlot storageSlot, ResourceContainerSpawnData data)
         {
-            int seed = Builder.SessionSeedRandom.Range(0, int.MaxValue);
+            int seed = Random.Next();
             switch (data.m_type)
             {
                 case eResourceContainerSpawnType.Health:

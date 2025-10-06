@@ -19,9 +19,10 @@ namespace ItemSpawnFix.Patches
 
         [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.Build))]
         [HarmonyPostfix]
-        private static void PostBuild()
+        private static void PostBuild(bool __result)
         {
-            RedistributeUtils.OnZoneFinished();
+            if (__result)
+                RedistributeUtils.OnZoneFinished();
         }
 
         [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
@@ -44,6 +45,72 @@ namespace ItemSpawnFix.Patches
             }
 
             __instance.TriggerFunctionBuilder(builder, distItem, out _);
+            return false;
+        }
+
+        [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.Build))]
+        [HarmonyWrapSafe]
+        [HarmonyPriority(Priority.Low)]
+        [HarmonyPrefix]
+        private static bool OverrideBuildOrder(LG_PopulateFunctionMarkersInZoneJob __instance, ref bool __result)
+        {
+            if (!Configuration.RaiseObjectPriority) return true;
+
+            __result = false;
+            if (!__instance.BuildGenericFunctionItems(eDistributionQueue.PrioritizedFunctionItems))
+            {
+                return false;
+            }
+            if (!__instance.BuildGateKeyItems())
+            {
+                return false;
+            }
+            if (!__instance.BuildGenericFunctionItems())
+            {
+                return false;
+            }
+            if (!__instance.BuildPickupItems())
+            {
+                return false;
+            }
+            if (!__instance.BuildResourceContainers())
+            {
+                return false;
+            }
+
+            __result = true;
+            return false;
+        }
+
+        [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.BuildGenericFunctionItems))]
+        [HarmonyWrapSafe]
+        [HarmonyPriority(Priority.Low)]
+        [HarmonyPrefix]
+        private static bool AllowRedistributeGeneric(LG_PopulateFunctionMarkersInZoneJob __instance, eDistributionQueue queue, ref bool __result)
+        {
+            if (!Configuration.AllowMoveObjects) return true;
+
+            LG_DistributeItem item;
+            DistributeItemQueueWrapper<LG_DistributeItem> wrapper;
+            if (queue == eDistributionQueue.GenericFunctionItems)
+                wrapper = __instance.m_distributionData.GenericFunctionItems;
+            else
+                wrapper = __instance.m_distributionData.PrioritizedClusterItems;
+
+            // By IL2CPP's command, wrapper.TryGetItem does not exist
+            if (wrapper.Count != 0)
+            {
+                item = wrapper.m_itemQueue.Dequeue();
+                __result = false;
+            }
+            else
+            {
+                __result = true;
+                return false;
+            }
+
+            LG_FunctionMarkerBuilder builder = new(item.m_assignedNode, item.m_function, item.m_isWardenObjective, item.m_wardenObjectiveChainIndex, item.m_assignedGate, item.m_localTerminalLogFiles, item.m_terminalStartStateData, item.m_terminalPlacementData);
+            __instance.TriggerFunctionBuilder(builder, item, out _);
             return false;
         }
 
@@ -85,6 +152,17 @@ namespace ItemSpawnFix.Patches
 
             if (job.m_fallbackMode)
             {
+                if (function == ExpeditionFunction.GroundSpawn) // Ground spawns (corpses and such) don't matter
+                {
+                    if (!empty)
+                        orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
+                    else
+                        deepestSpawner = IntPtr.Zero;
+                    RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
+                    return;
+                }
+
+                RedistributeUtils.SetSeed(Builder.BuildSeedRandom.Range(0, int.MaxValue));
                 var node = item.m_assignedNode;
                 var areaString = node.m_area.m_navInfo.ToString();
                 var zoneString = node.m_zone.NavInfo.ToString();
@@ -102,12 +180,16 @@ namespace ItemSpawnFix.Patches
                 return;
             }
 
-            // Fallback functionality is handled manually. This avoids the original function adding it to the wrong queue.
-            item.m_allowFunctionFallback = false;
+            // Ground spawns can fall back to floor like normal.
+            if (function != ExpeditionFunction.GroundSpawn)
+            {
+                // Fallback functionality is handled manually. This avoids the original function adding it to the wrong queue.
+                item.m_allowFunctionFallback = false;
+            }
 
-            orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
+             orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
 
-            if (empty)
+            if (empty || function == ExpeditionFunction.GroundSpawn)
             {
                 RedistributeUtils.DistributeFunction = ExpeditionFunction.None;
                 return;
@@ -115,10 +197,12 @@ namespace ItemSpawnFix.Patches
 
             if (deepestSpawner == IntPtr.Zero)
             {
+                RedistributeUtils.SetSeed(Builder.BuildSeedRandom.Range(0, int.MaxValue));
                 var node = item.m_assignedNode;
                 var areaString = node.m_area.m_navInfo.ToString();
                 var zone = node.m_zone;
                 var zoneString = zone.NavInfo.ToString();
+                
                 if (Configuration.ShowDebugMessages)
                     DinoLogger.Log($"No markers remaining for distribute {function} in {zoneString} {areaString} trying to redistribute");
 
@@ -143,7 +227,7 @@ namespace ItemSpawnFix.Patches
 
                 while (_validNodes.Count > 0)
                 {
-                    int index = Builder.SessionSeedRandom.Range(0, _validNodes.Count, "LG_PopulateFunctionMarkersInZone_Retry_Zone");
+                    int index = RedistributeUtils.Random.Next(0, _validNodes.Count);
                     markerBuilder.m_node = _validNodes[index];
                     item.m_assignedNode = _validNodes[index];
                     orig_TriggerFunctionBuilder!(_this, builder, distItem, out deepestSpawner, debug, methodInfo);
