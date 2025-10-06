@@ -48,6 +48,7 @@ namespace ItemSpawnFix.CustomSettings
         };
 
         public LevelTarget[] Levels { get; set; } = Array.Empty<LevelTarget>();
+        public uint RundownID = 0;
         public bool RaiseObjectSpawnPriority { get; set; } = false;
         public bool AllowRedistributeObjects { get; set; } = false;
     }

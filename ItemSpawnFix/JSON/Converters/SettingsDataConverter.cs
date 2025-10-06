@@ -64,6 +64,7 @@ namespace ItemSpawnFix.JSON.Converters
                 JsonSerializer.Serialize(writer, value.Levels[0], options);
             else
                 JsonSerializer.Serialize(writer, value.Levels, options);
+            writer.WriteNumber(nameof(value.RundownID), value.RundownID);
             writer.WriteBoolean(nameof(value.RaiseObjectSpawnPriority), value.RaiseObjectSpawnPriority);
             writer.WriteBoolean(nameof(value.AllowRedistributeObjects), value.AllowRedistributeObjects);
             writer.WriteEndObject();

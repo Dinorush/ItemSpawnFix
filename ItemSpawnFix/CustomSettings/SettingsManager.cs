@@ -97,6 +97,8 @@ namespace ItemSpawnFix.CustomSettings
             while (enumerator.MoveNext())
             {
                 var data = enumerator.Current;
+                if (data.RundownID != 0 && data.RundownID != rundownID) continue;
+
                 foreach (var target in data.Levels)
                 {
                     if (target.IsMatch(layoutID, rundownID, expData.tier, expData.expeditionIndex))

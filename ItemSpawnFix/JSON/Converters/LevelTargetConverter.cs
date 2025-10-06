@@ -68,7 +68,7 @@ namespace ItemSpawnFix.JSON.Converters
             if (value.LevelLayoutID != 0)
                 writer.WriteNumberValue(value.LevelLayoutID);
             else
-                writer.WriteStringValue(value.Tier.ToString() + (value.TierIndex >= 0 ? value.TierIndex + 1 : ""));
+                writer.WriteStringValue(value.Tier.ToString()[^1] + (value.TierIndex >= 0 ? (value.TierIndex + 1).ToString() : ""));
         }
     }
 }

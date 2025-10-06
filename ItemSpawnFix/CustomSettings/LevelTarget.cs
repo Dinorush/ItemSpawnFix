@@ -7,7 +7,6 @@ namespace ItemSpawnFix.CustomSettings
     public sealed class LevelTarget
     {
         public uint LevelLayoutID { get; set; } = 0;
-        public uint RundownID { get; set; } = 0;
         public eRundownTier Tier { get; set; } = eRundownTier.Surface;
         public int TierIndex { get; set; } = -1;
 
@@ -17,13 +16,11 @@ namespace ItemSpawnFix.CustomSettings
             {
                 return true;
             }
-            else if (RundownID == 0 || RundownID == rundownID)
+            else if (Tier == tier && (TierIndex == -1 || TierIndex == tierIndex))
             {
-                if (Tier == tier && (TierIndex == -1 || TierIndex == tierIndex))
-                {
-                    return true;
-                }
+                return true;
             }
+
             return false;
         }
     }
