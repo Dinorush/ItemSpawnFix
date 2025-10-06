@@ -25,7 +25,7 @@ namespace ItemSpawnFix
             section = "Rundown Settings";
             _raiseObjectPriority = configFile.Bind(section, "Raise Object Priority", false, "Changes the spawn order to prioritize important objects:\n1. Objects (Bulkhead/Terminals/Generators/...)\n2. Big Pickups/Consumables\n3. Resources\n\nVanilla Order:\n1. Certain objects (Bulkhead/...)\n2. Resources\n3. Big Pickups/Consumables\n4. Other Objects (Terminals/Generators/...)");
 
-            _allowMoveObjects = configFile.Bind(section, "Allow Moving Objects", false, "Allows objects (e.g. Terminals) to be redistributed to other zones if no markers exist in their zone.");
+            _allowMoveObjects = configFile.Bind(section, "Allow Moving Objects", false, "Allows objects (e.g. Terminals) to be redistributed to other areas if no markers exist in their area.");
 
         }
 
