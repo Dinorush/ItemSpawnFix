@@ -137,7 +137,8 @@ namespace ItemSpawnFix.Redistribute
             List<int> removeIndices = new();
             for (int i = 0; i < shuffle.Length && items.Count > 0; i++)
             {
-                (var storage, var slots) = storages[shuffle[i]];
+                int index = shuffle[i];
+                (var storage, var slots) = storages[index];
                 while (slots.Count > 0 && items.Count > 0)
                 {
                     if (!slots.RemoveRandomAndCheckSpace(out var slot))
@@ -146,13 +147,14 @@ namespace ItemSpawnFix.Redistribute
                         if (parent != null)
                         {
                             int parIndex = parent.FindIndex(pair => pair.Item1.Pointer == storage.Pointer);
-                            parent.RemoveAt(parIndex);
+                            if (parIndex != -1)
+                                parent.RemoveAt(parIndex);
                         }
-                        removeIndices.Add(shuffle[i]);
+                        removeIndices.Add(index);
                     }
                     // If using empty storages, remove as soon as any slot is used
                     else if (parent != null)
-                        removeIndices.Add(shuffle[i]);
+                        removeIndices.Add(index);
 
                     SpawnItem(storage, slot, items[^1]);
                     items.RemoveAt(items.Count - 1);
