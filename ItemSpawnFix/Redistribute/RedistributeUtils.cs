@@ -147,18 +147,19 @@ namespace ItemSpawnFix.Redistribute
                         if (parent != null)
                         {
                             int parIndex = parent.FindIndex(pair => pair.Item1.Pointer == storage.Pointer);
-                            if (parIndex != -1)
-                                parent.RemoveAt(parIndex);
+                            parent.RemoveAt(parIndex);
                         }
-                        removeIndices.Add(index);
+                        else
+                            removeIndices.Add(index);
                     }
-                    // If using empty storages, remove as soon as any slot is used
-                    else if (parent != null)
-                        removeIndices.Add(index);
 
                     SpawnItem(storage, slot, items[^1]);
                     items.RemoveAt(items.Count - 1);
                 }
+
+                // If using empty storages, remove as soon as any slot is used
+                if (parent != null)
+                    removeIndices.Add(index);
             }
 
             removeIndices.Sort((a, b) => b.CompareTo(a));
