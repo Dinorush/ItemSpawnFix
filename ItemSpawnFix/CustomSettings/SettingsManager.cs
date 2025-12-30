@@ -101,7 +101,7 @@ namespace ItemSpawnFix.CustomSettings
 
                 foreach (var target in data.Levels)
                 {
-                    if (target.IsMatch(layoutID, rundownID, expData.tier, expData.expeditionIndex))
+                    if (target.IsMatch(layoutID, expData.tier, expData.expeditionIndex))
                     {
                         ActiveSettings = data;
                         return;

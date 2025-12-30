@@ -10,7 +10,7 @@ namespace ItemSpawnFix.CustomSettings
         public eRundownTier Tier { get; set; } = eRundownTier.Surface;
         public int TierIndex { get; set; } = -1;
 
-        public bool IsMatch(uint layoutID, uint rundownID, eRundownTier tier, int tierIndex)
+        public bool IsMatch(uint layoutID, eRundownTier tier, int tierIndex)
         {
             if (layoutID == LevelLayoutID)
             {

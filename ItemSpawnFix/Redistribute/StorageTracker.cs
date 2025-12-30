@@ -8,11 +8,21 @@ namespace ItemSpawnFix.Redistribute
 {
     public class StorageTracker
     {
+        private static uint s_nextID = 0; 
+
+        public readonly int NodeID;
+        public readonly uint ID;
+        public readonly LG_ResourceContainer_Storage Storage;
+
         private readonly List<(StorageSlot slot, HashSet<IntPtr> alignSet)> _slotAligns;
         private readonly int _maxCount;
 
-        public StorageTracker(LG_ResourceContainer_Storage storage)
+        public StorageTracker(LG_ResourceContainer_Storage storage, int nodeID)
         {
+            NodeID = nodeID;
+            ID = s_nextID++;
+            Storage = storage;
+
             _slotAligns = new();
             foreach (var slot in storage.m_storageSlots)
             {

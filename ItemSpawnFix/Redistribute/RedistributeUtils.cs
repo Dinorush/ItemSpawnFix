@@ -2,7 +2,7 @@
 using GameData;
 using GTFO.API;
 using HarmonyLib;
-using ItemSpawnFix.CustomSettings;
+using ItemSpawnFix.Utils;
 using LevelGeneration;
 using SNetwork;
 using System;
@@ -20,12 +20,10 @@ namespace ItemSpawnFix.Redistribute
         public static System.Random Random { get; private set; } = new();
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
 
-        private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storages = new();
-        private readonly static List<(LG_ResourceContainer_Storage storage, StorageTracker slots)> _storagesEmpty = new();
-        private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots)>> _nodeStorages = new();
-        private readonly static Dictionary<IntPtr, List<(LG_ResourceContainer_Storage storage, StorageTracker slots)>> _nodeStoragesEmpty = new();
+        private readonly static Dictionary<int, List<StorageTracker>> _nodeTrackers = new();
+        private readonly static Dictionary<int, List<StorageTracker>> _nodeTrackersEmpty = new();
         private static StorageTracker? _currentTracker;
-
+        
         public static void Init()
         {
             LevelAPI.OnBuildStart += OnBuildStart;
@@ -35,43 +33,39 @@ namespace ItemSpawnFix.Redistribute
         private static void OnBuildStart()
         {
             SetSeed(Builder.BuildSeedRandom.Seed);
-            _storages.Clear();
-            _storagesEmpty.Clear();
-            _nodeStorages.Clear();
-            _nodeStoragesEmpty.Clear();
+            _nodeTrackers.Clear();
+            _nodeTrackersEmpty.Clear();
         }
 
         internal static void OnZoneFinished()
         {
-            foreach ((var storage, var _) in _storagesEmpty)
-                SNet.DestroySelfManagedReplicatedObject(storage.transform.parent.gameObject);
+            foreach (var list in _nodeTrackersEmpty.Values)
+                foreach (var tracker in list)
+                    SNet.DestroySelfManagedReplicatedObject(tracker.Storage.transform.parent.gameObject);
 
-            _storages.Clear();
-            _storagesEmpty.Clear();
-            _nodeStorages.Clear();
-            _nodeStoragesEmpty.Clear();
+            _nodeTrackers.Clear();
+            _nodeTrackersEmpty.Clear();
         }
 
         internal static void OnContainerStorageSpawned(LG_ResourceContainer_Storage storage)
         {
             if (DistributeFunction != ExpeditionFunction.ResourceContainerWeak) return;
 
-            var storagePair = (storage, _currentTracker = new(storage));
-            _storages.Add(storagePair);
-            _storagesEmpty.Add(storagePair);
             var node = storage.m_core.SpawnNode;
             if (node == null) return;
 
-            List<(LG_ResourceContainer_Storage, StorageTracker)> emptyStorages;
-            if (!_nodeStorages.TryGetValue(node.Pointer, out var storages))
+            var nodeID = node.NodeID;
+            _currentTracker = new(storage, nodeID);
+            List<StorageTracker> emptyTrackers;
+            if (!_nodeTrackers.TryGetValue(nodeID, out var trackers))
             {
-                _nodeStorages.Add(node.Pointer, storages = new());
-                _nodeStoragesEmpty.Add(node.Pointer, emptyStorages = new());
+                _nodeTrackers.Add(nodeID, trackers = new());
+                _nodeTrackersEmpty.Add(nodeID, emptyTrackers = new());
             }
             else
-                emptyStorages = _nodeStoragesEmpty[node.Pointer];
-            storages.Add(storagePair);
-            emptyStorages.Add(storagePair);
+                emptyTrackers = _nodeTrackersEmpty[nodeID];
+            trackers.Add(_currentTracker);
+            emptyTrackers.Add(_currentTracker);
         }
 
         internal static void OnContainerItemSpawned(LG_ResourceContainer_Storage storage, Transform align)
@@ -80,20 +74,16 @@ namespace ItemSpawnFix.Redistribute
 
             if (_currentTracker.Unused)
             {
-                _storagesEmpty.RemoveAt(_storagesEmpty.Count - 1);
-
                 var node = storage.m_core.SpawnNode;
-                if (node != null && _nodeStoragesEmpty.TryGetValue(node.Pointer, out var storagesEmpty))
-                    storagesEmpty.RemoveAt(storagesEmpty.Count - 1);
+                if (node != null && _nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackersEmpty))
+                    trackersEmpty.RemoveAt(trackersEmpty.Count - 1);
             }
 
             if (!_currentTracker.RemoveAndCheckSpace(align))
             {
-                _storages.RemoveAt(_storages.Count - 1);
-
                 var node = storage.m_core.SpawnNode;
-                if (node != null && _nodeStorages.TryGetValue(node.Pointer, out var storages))
-                    storages.RemoveAt(storages.Count - 1);
+                if (node != null && _nodeTrackers.TryGetValue(node.NodeID, out var trackers))
+                    trackers.RemoveAt(trackers.Count - 1);
             }
         }
 
@@ -108,65 +98,72 @@ namespace ItemSpawnFix.Redistribute
             foreach (var pack in items)
                 remainingItems.Add(pack);
 
-            if (_storages.Count == 0) return false;
+            var trackerDict = empty ? _nodeTrackersEmpty : _nodeTrackers;
+            if (trackerDict.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(remainingItems, trackers, empty))
+                return true;
 
-            if (empty)
-            {
-                if (_nodeStoragesEmpty.TryGetValue(node.Pointer, out var nodeStoragesEmpty))
-                    TryRedistributeToList(remainingItems, nodeStoragesEmpty, _nodeStorages[node.Pointer]);
-                TryRedistributeToList(remainingItems, _storagesEmpty, _storages);
-            }
-            else
-            {
-                if (_nodeStorages.TryGetValue(node.Pointer, out var nodeStorages))
-                    TryRedistributeToList(remainingItems, nodeStorages);
-                TryRedistributeToList(remainingItems, _storages);
-            }
-
-            return remainingItems.Count == 0;
+            List<StorageTracker> global = new(trackerDict.Values.Sum(list => list.Count));
+            foreach (var list in trackerDict.Values)
+                global.AddRange(list);
+            return TryRedistributeToList(remainingItems, global, empty);
         }
 
-        private static bool TryRedistributeToList(List<ResourceContainerSpawnData> items, List<(LG_ResourceContainer_Storage, StorageTracker)> storages, List<(LG_ResourceContainer_Storage, StorageTracker)>? parent = null)
+        private static bool TryRedistributeToList(List<ResourceContainerSpawnData> items, List<StorageTracker> trackers, bool empty = false)
         {
-            if (storages.Count == 0) return false;
+            if (trackers.Count == 0) return false;
 
             var oldTracker = _currentTracker;
             _currentTracker = null; // Prevent patch from modifying the list while we're using it
-            var shuffle = Enumerable.Range(0, storages.Count).ToArray();
+
+            Dictionary<int, HashSet<uint>> toRemove = new();
+            var shuffle = Enumerable.Range(0, trackers.Count).ToArray();
             Shuffle(shuffle);
-            List<int> removeIndices = new();
+
             for (int i = 0; i < shuffle.Length && items.Count > 0; i++)
             {
                 int index = shuffle[i];
-                (var storage, var slots) = storages[index];
-                while (slots.Count > 0 && items.Count > 0)
+                var tracker = trackers[index];
+                while (tracker.Count > 0 && items.Count > 0)
                 {
-                    if (!slots.RemoveRandomAndCheckSpace(out var slot))
-                    {
-                        // If using only the empty storages and no slots remain, need to remove from parent too
-                        if (parent != null)
-                        {
-                            int parIndex = parent.FindIndex(pair => pair.Item1.Pointer == storage.Pointer);
-                            parent.RemoveAt(parIndex);
-                        }
-                        else
-                            removeIndices.Add(index);
-                    }
+                    if (!tracker.RemoveRandomAndCheckSpace(out var slot) && !empty)
+                        toRemove.GetOrAdd(tracker.NodeID).Add(tracker.ID);
 
-                    SpawnItem(storage, slot, items[^1]);
+                    SpawnItem(tracker.Storage, slot, items[^1]);
                     items.RemoveAt(items.Count - 1);
                 }
 
-                // If using empty storages, remove as soon as any slot is used
-                if (parent != null)
-                    removeIndices.Add(index);
+                // If using empty storages, remove when used at all
+                if (empty)
+                    toRemove.GetOrAdd(tracker.NodeID).Add(tracker.ID);
             }
 
-            removeIndices.Sort((a, b) => b.CompareTo(a));
-            foreach (var index in removeIndices)
-                storages.RemoveAt(index);
+            foreach ((var nodeID, var idSet) in toRemove)
+            {
+                if (empty)
+                {
+                    RemoveFromList(_nodeTrackersEmpty[nodeID], idSet);
+                    RemoveFromList(_nodeTrackers[nodeID], idSet, (tracker) => tracker.Count > 0);
+                }
+                else
+                {
+                    RemoveFromList(_nodeTrackers[nodeID], idSet);
+                }
+            }
+
             _currentTracker = oldTracker;
-            return items.Count > 0;
+            return items.Count == 0;
+        }
+
+        private static void RemoveFromList(List<StorageTracker> list, HashSet<uint> idsToRemove, Predicate<StorageTracker>? cond = null)
+        {
+            int newIndex = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var tracker = list[i];
+                if (!idsToRemove.Contains(tracker.ID) || cond?.Invoke(tracker) == true)
+                    list[newIndex++] = tracker;
+            }
+            list.RemoveRange(newIndex, list.Count - newIndex);
         }
 
         private static void Shuffle<T>(T[] array)
