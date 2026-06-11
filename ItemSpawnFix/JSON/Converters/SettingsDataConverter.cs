@@ -22,7 +22,7 @@ namespace ItemSpawnFix.JSON.Converters
                 if (reader.TokenType == JsonTokenType.EndObject)
                     return data;
 
-                if (reader.TokenType != JsonTokenType.PropertyName) throw new JsonException("Expected PropertyName token");
+                if (reader.TokenType != JsonTokenType.PropertyName) throw new JsonException($"Expected PropertyName token (found {reader.TokenType})");
 
                 string property = reader.GetString()!;
                 reader.Read();
@@ -35,13 +35,24 @@ namespace ItemSpawnFix.JSON.Converters
                         else if (reader.TokenType != JsonTokenType.Null)
                             data.Levels = new LevelTarget[] { JsonSerializer.Deserialize<LevelTarget>(ref reader, options)! };
                         break;
+                    case "rundownid":
+                    case "rundown":
+                        data.RundownID = reader.GetUInt32();
+                        break;
                     case "raiseobjectspawnpriority":
                         data.RaiseObjectSpawnPriority = reader.GetBoolean();
                         break;
                     case "allowredistributeobjects":
                         data.AllowRedistributeObjects = reader.GetBoolean();
                         break;
-                            
+                    case "setconsumablespawns":
+                        data.SetConsumableSpawns = JsonSerializer.Deserialize<ConsumableSpawnData[]>(ref reader, options)!;
+                        break;
+                    case "setresourcespawns":
+                        data.SetResourceSpawns = JsonSerializer.Deserialize<ResourceSpawnData[]>(ref reader, options)!;
+                        break;
+                    default:
+                        throw new JsonException($"Unrecognized property name found: {property}");
                 }
             }
 

@@ -23,6 +23,8 @@ namespace ItemSpawnFix.Patches
         }
 
         [HarmonyPatch(typeof(LG_Distribute_ResourcePacksPerZone), nameof(LG_Distribute_ResourcePacksPerZone.Build))]
+        [HarmonyPatch(typeof(LG_Distribute_PickupItemsPerZone), nameof(LG_Distribute_PickupItemsPerZone.Build))]
+        [HarmonyPatch(typeof(LG_Distribute_ProgressionPuzzles), nameof(LG_Distribute_ProgressionPuzzles.CreateKeyItemDistribution))]
         [HarmonyPrefix]
         private static void Pre_Build()
         {
@@ -30,6 +32,8 @@ namespace ItemSpawnFix.Patches
         }
 
         [HarmonyPatch(typeof(LG_Distribute_ResourcePacksPerZone), nameof(LG_Distribute_ResourcePacksPerZone.Build))]
+        [HarmonyPatch(typeof(LG_Distribute_PickupItemsPerZone), nameof(LG_Distribute_PickupItemsPerZone.Build))]
+        [HarmonyPatch(typeof(LG_Distribute_ProgressionPuzzles), nameof(LG_Distribute_ProgressionPuzzles.CreateKeyItemDistribution))]
         [HarmonyPostfix]
         private static void Post_Build()
         {

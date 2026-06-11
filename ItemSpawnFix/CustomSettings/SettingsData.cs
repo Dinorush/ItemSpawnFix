@@ -28,6 +28,13 @@ namespace ItemSpawnFix.CustomSettings
                     {
                         Tier = eRundownTier.TierA
                     }
+                },
+                SetResourceSpawns = new[]
+                {
+                    new ResourceSpawnData()
+                    {
+                        PackType = eResourceContainerSpawnType.AmmoWeapon
+                    }
                 }
             },
             new()
@@ -43,6 +50,10 @@ namespace ItemSpawnFix.CustomSettings
                         Tier = eRundownTier.TierB,
                         TierIndex = 0
                     }
+                },
+                SetConsumableSpawns = new[]
+                {
+                    new ConsumableSpawnData()
                 }
             }
         };
@@ -51,5 +62,7 @@ namespace ItemSpawnFix.CustomSettings
         public uint RundownID = 0;
         public bool RaiseObjectSpawnPriority { get; set; } = false;
         public bool AllowRedistributeObjects { get; set; } = false;
+        public ConsumableSpawnData[] SetConsumableSpawns { get; set; } = Array.Empty<ConsumableSpawnData>();
+        public ResourceSpawnData[] SetResourceSpawns { get; set; } = Array.Empty<ResourceSpawnData>();
     }
 }

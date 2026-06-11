@@ -1,9 +1,12 @@
-﻿using GTFO.API;
+﻿using GameData;
+using GTFO.API;
 using GTFO.API.Utilities;
 using ItemSpawnFix.Dependencies;
 using ItemSpawnFix.JSON;
 using ItemSpawnFix.Utils;
+using LevelGeneration;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -15,10 +18,12 @@ namespace ItemSpawnFix.CustomSettings
         public static readonly SettingsManager Current;
         public static SettingsData ActiveSettings { get; set; } = SettingsData.Default;
         private static (eRundownTier tier, int tierIndex) _currentLevel = (eRundownTier.Surface, 0);
+        private static readonly Dictionary<(LG_LayerType, eLocalZoneIndex), List<BaseSpawnData>> _currentSetSpawns = new();
+
+        public static bool TryGetSetSpawns(LG_Zone zone, [MaybeNullWhen(false)] out List<BaseSpawnData> list) => _currentSetSpawns.TryGetValue((zone.Layer.m_type, zone.LocalIndex), out list);
+        public static void ClearSetSpawns(LG_Zone zone) => _currentSetSpawns.Remove((zone.Layer.m_type, zone.LocalIndex));
 
         private readonly Dictionary<string, List<SettingsData>> _fileToData = new();
-
-        private readonly LiveEditListener _liveEditListener;
 
         private void FileChanged(LiveEditEventArgs e)
         {
@@ -77,20 +82,23 @@ namespace ItemSpawnFix.CustomSettings
 
         private static void RefreshSettings()
         {
-            var oldSettings = ActiveSettings;
-            ActiveSettings = SettingsData.Default;
-
             var rundownID = ActiveRundownID();
-            if (rundownID == 0) return;
-
-            var expData = RundownManager.GetActiveExpeditionData();
-            if (expData.tier == eRundownTier.Surface) return;
-
-            if (_currentLevel.tier == expData.tier && _currentLevel.tierIndex == expData.expeditionIndex)
+            if (rundownID == 0)
             {
-                ActiveSettings = oldSettings;
+                ActiveSettings = SettingsData.Default;
+                _currentSetSpawns.Clear();
                 return;
             }
+
+            var expData = RundownManager.GetActiveExpeditionData();
+            if (expData.tier == eRundownTier.Surface)
+            {
+                ActiveSettings = SettingsData.Default;
+                _currentSetSpawns.Clear();
+                return;
+            }
+
+            if (_currentLevel.tier == expData.tier && _currentLevel.tierIndex == expData.expeditionIndex) return;
 
             var layoutID = RundownManager.ActiveExpedition.LevelLayoutData;
             var enumerator = Current.GetEnumerator();
@@ -104,9 +112,32 @@ namespace ItemSpawnFix.CustomSettings
                     if (target.IsMatch(layoutID, expData.tier, expData.expeditionIndex))
                     {
                         ActiveSettings = data;
+                        CacheSetSpawns();
                         return;
                     }
                 }
+            }
+        }
+
+        private static void CacheSetSpawns()
+        {
+            _currentSetSpawns.Clear();
+            foreach (var spawn in ActiveSettings.SetConsumableSpawns)
+            {
+                var location = (spawn.Layer, spawn.LocalIndex);
+                var list = _currentSetSpawns.GetOrAdd(location);
+                list.EnsureCapacity(list.Count + spawn.Count);
+                for (int i = 0; i < spawn.Count; i++)
+                    list.Add(spawn);
+            }
+
+            foreach (var spawn in ActiveSettings.SetResourceSpawns)
+            {
+                var location = (spawn.Layer, spawn.LocalIndex);
+                var list = _currentSetSpawns.GetOrAdd(location);
+                list.EnsureCapacity(list.Count + spawn.Count);
+                for (int i = 0; i < spawn.Count; i++)
+                    list.Add(spawn);
             }
         }
 
@@ -137,10 +168,10 @@ namespace ItemSpawnFix.CustomSettings
                 ReadFileContent(confFile, content);
             }
 
-            _liveEditListener = LiveEdit.CreateListener(DEFINITION_PATH, "*.json", true);
-            _liveEditListener.FileCreated += FileCreated;
-            _liveEditListener.FileChanged += FileChanged;
-            _liveEditListener.FileDeleted += FileDeleted;
+            var liveEditListener = LiveEdit.CreateListener(DEFINITION_PATH, "*.json", true);
+            liveEditListener.FileCreated += FileCreated;
+            liveEditListener.FileChanged += FileChanged;
+            liveEditListener.FileDeleted += FileDeleted;
         }
 
         static SettingsManager() => Current = new();

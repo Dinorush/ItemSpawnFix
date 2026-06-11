@@ -8,7 +8,7 @@ using ItemSpawnFix.Redistribute;
 
 namespace ItemSpawnFix
 {
-    [BepInPlugin("Dinorush." + MODNAME, MODNAME, "1.2.3")]
+    [BepInPlugin("Dinorush." + MODNAME, MODNAME, "1.3.0")]
     [BepInDependency("dev.gtfomodding.gtfo-api", BepInDependency.DependencyFlags.HardDependency)]
     [BepInDependency(MTFOWrapper.PLUGIN_GUID, BepInDependency.DependencyFlags.SoftDependency)]
     internal sealed class EntryPoint : BasePlugin

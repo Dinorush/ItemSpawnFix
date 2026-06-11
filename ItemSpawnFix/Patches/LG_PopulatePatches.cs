@@ -20,10 +20,10 @@ namespace ItemSpawnFix.Patches
 
         [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.Build))]
         [HarmonyPostfix]
-        private static void PostBuild(bool __result)
+        private static void PostBuild(LG_PopulateFunctionMarkersInZoneJob __instance, bool __result)
         {
             if (__result)
-                RedistributeUtils.OnZoneFinished();
+                RedistributeUtils.OnZoneFinished(__instance.m_zone);
         }
 
         [HarmonyPatch(nameof(LG_PopulateFunctionMarkersInZoneJob.BuildBothFunctionAndPropMarkerAndRemoveSurplus))]
@@ -271,10 +271,13 @@ namespace ItemSpawnFix.Patches
             // If resources can be distributed to boxes, don't spawn anything
             if (RedistributeUtils.TryRedistributeItems(node, distRes.m_packs, out var remainingItems, empty))
             {
-                if (empty)
-                    DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to empty containers in {zoneString}");
-                else
-                    DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to containers in {zoneString}");
+                if (Configuration.ShowDebugMessages)
+                {
+                    if (empty)
+                        DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to empty containers in {zoneString}");
+                    else
+                        DinoLogger.Log($"Redistributed {RedistributeUtils.GetPackListString(distRes.m_packs)} to containers in {zoneString}");
+                }
                 return true;
             }
 

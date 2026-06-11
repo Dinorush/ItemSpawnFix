@@ -2,6 +2,7 @@
 using GameData;
 using GTFO.API;
 using HarmonyLib;
+using ItemSpawnFix.CustomSettings;
 using ItemSpawnFix.Utils;
 using LevelGeneration;
 using SNetwork;
@@ -19,6 +20,7 @@ namespace ItemSpawnFix.Redistribute
     {
         public static System.Random Random { get; private set; } = new();
         public static ExpeditionFunction DistributeFunction { get; set; } = ExpeditionFunction.None;
+        public const eCommodityType CustomCommodityType = (eCommodityType)5114;
 
         private readonly static Dictionary<int, List<StorageTracker>> _nodeTrackers = new();
         private readonly static Dictionary<int, List<StorageTracker>> _nodeTrackersEmpty = new();
@@ -37,8 +39,10 @@ namespace ItemSpawnFix.Redistribute
             _nodeTrackersEmpty.Clear();
         }
 
-        internal static void OnZoneFinished()
+        internal static void OnZoneFinished(LG_Zone zone)
         {
+            DoSetSpawns(zone);
+
             foreach (var list in _nodeTrackersEmpty.Values)
                 foreach (var tracker in list)
                     SNet.DestroySelfManagedReplicatedObject(tracker.Storage.transform.parent.gameObject);
@@ -142,7 +146,7 @@ namespace ItemSpawnFix.Redistribute
                 if (empty)
                 {
                     RemoveFromList(_nodeTrackersEmpty[nodeID], idSet);
-                    RemoveFromList(_nodeTrackers[nodeID], idSet, (tracker) => tracker.Count > 0);
+                    RemoveFromList(_nodeTrackers[nodeID], idSet, (tracker) => tracker.Count == 0);
                 }
                 else
                 {
@@ -174,6 +178,60 @@ namespace ItemSpawnFix.Redistribute
                 int num2 = Random.Next(0, num--);
                 (array[num2], array[num]) = (array[num], array[num2]);
             }
+        }
+
+        private static void DoSetSpawns(LG_Zone zone)
+        {
+            if (!SettingsManager.TryGetSetSpawns(zone, out var spawnList)) return;
+
+            List<StorageTracker>? globalEmpty = null;
+            List<StorageTracker>? global = null;
+            List<ResourceContainerSpawnData> tempList = new(1);
+
+            foreach (var spawn in spawnList)
+            {
+                if (!spawn.TryGetContainerData(out var containerData)) continue;
+
+                tempList.Add(containerData);
+                if (spawn.AreaIndex >= 0 && spawn.AreaIndex < zone.m_areas.Count)
+                {
+                    var node = zone.m_areas[spawn.AreaIndex].m_courseNode;
+                    if (_nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(tempList, trackers, empty: true))
+                        continue;
+
+                    if (_nodeTrackers.TryGetValue(node.NodeID, out trackers) && TryRedistributeToList(tempList, trackers, empty: false))
+                        continue;
+
+                    if (Configuration.ShowDebugMessages)
+                        DinoLogger.Log($"No room for set spawn [{containerData.m_type}, {containerData.m_ammo}] in {zone.NavInfo.ToString()}{node.m_area.m_navInfo.ToString()}, moving to zone...");
+                }
+                else
+                    DinoLogger.Error($"Set spawn has area index {spawn.AreaIndex}, but zone max index is {zone.m_areas.Count - 1}! Defaulting to zone spawn...");
+
+                if (globalEmpty == null)
+                {
+                    globalEmpty = new(_nodeTrackersEmpty.Values.Sum(list => list.Count));
+                    foreach (var list in _nodeTrackersEmpty.Values)
+                        globalEmpty.AddRange(list);
+                }
+
+                if (TryRedistributeToList(tempList, globalEmpty, empty: true))
+                    continue;
+
+                if (global == null)
+                {
+                    global = new(_nodeTrackers.Values.Sum(list => list.Count));
+                    foreach (var list in _nodeTrackers.Values)
+                        global.AddRange(list);
+                }
+
+                if (TryRedistributeToList(tempList, global, empty: false))
+                    continue;
+
+                tempList.Clear();
+            }
+
+            SettingsManager.ClearSetSpawns(zone);
         }
 
         private static void SpawnItem(LG_ResourceContainer_Storage storage, StorageSlot storageSlot, ResourceContainerSpawnData data)
