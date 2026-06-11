@@ -78,6 +78,8 @@ namespace ItemSpawnFix.JSON.Converters
             writer.WriteNumber(nameof(value.RundownID), value.RundownID);
             writer.WriteBoolean(nameof(value.RaiseObjectSpawnPriority), value.RaiseObjectSpawnPriority);
             writer.WriteBoolean(nameof(value.AllowRedistributeObjects), value.AllowRedistributeObjects);
+            ISFJson.Serialize(writer, nameof(value.SetConsumableSpawns), value.SetConsumableSpawns, options);
+            ISFJson.Serialize(writer, nameof(value.SetResourceSpawns), value.SetResourceSpawns, options);
             writer.WriteEndObject();
         }
     }

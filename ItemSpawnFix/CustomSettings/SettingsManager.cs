@@ -18,10 +18,10 @@ namespace ItemSpawnFix.CustomSettings
         public static readonly SettingsManager Current;
         public static SettingsData ActiveSettings { get; set; } = SettingsData.Default;
         private static (eRundownTier tier, int tierIndex) _currentLevel = (eRundownTier.Surface, 0);
-        private static readonly Dictionary<(LG_LayerType, eLocalZoneIndex), List<BaseSpawnData>> _currentSetSpawns = new();
+        private static readonly Dictionary<(eDimensionIndex, LG_LayerType, eLocalZoneIndex), List<BaseSpawnData>> _currentSetSpawns = new();
 
-        public static bool TryGetSetSpawns(LG_Zone zone, [MaybeNullWhen(false)] out List<BaseSpawnData> list) => _currentSetSpawns.TryGetValue((zone.Layer.m_type, zone.LocalIndex), out list);
-        public static void ClearSetSpawns(LG_Zone zone) => _currentSetSpawns.Remove((zone.Layer.m_type, zone.LocalIndex));
+        public static bool TryGetSetSpawns(LG_Zone zone, [MaybeNullWhen(false)] out List<BaseSpawnData> list) => _currentSetSpawns.TryGetValue((zone.DimensionIndex, zone.Layer.m_type, zone.LocalIndex), out list);
+        public static void ClearSetSpawns(LG_Zone zone) => _currentSetSpawns.Remove((zone.DimensionIndex, zone.Layer.m_type, zone.LocalIndex));
 
         private readonly Dictionary<string, List<SettingsData>> _fileToData = new();
 
@@ -124,7 +124,7 @@ namespace ItemSpawnFix.CustomSettings
             _currentSetSpawns.Clear();
             foreach (var spawn in ActiveSettings.SetConsumableSpawns)
             {
-                var location = (spawn.Layer, spawn.LocalIndex);
+                var location = (spawn.DimensionIndex, spawn.Layer, spawn.LocalIndex);
                 var list = _currentSetSpawns.GetOrAdd(location);
                 list.EnsureCapacity(list.Count + spawn.Count);
                 for (int i = 0; i < spawn.Count; i++)
@@ -133,7 +133,7 @@ namespace ItemSpawnFix.CustomSettings
 
             foreach (var spawn in ActiveSettings.SetResourceSpawns)
             {
-                var location = (spawn.Layer, spawn.LocalIndex);
+                var location = (spawn.DimensionIndex, spawn.Layer, spawn.LocalIndex);
                 var list = _currentSetSpawns.GetOrAdd(location);
                 list.EnsureCapacity(list.Count + spawn.Count);
                 for (int i = 0; i < spawn.Count; i++)

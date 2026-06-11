@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ItemSpawnFix.JSON
 {
@@ -13,6 +14,11 @@ namespace ItemSpawnFix.JSON
             WriteIndented = true,
             IgnoreReadOnlyProperties = true,
         };
+
+        static ISFJson()
+        {
+            _setting.Converters.Add(new JsonStringEnumConverter());
+        }
 
         public static T? Deserialize<T>(string json)
         {
@@ -43,6 +49,12 @@ namespace ItemSpawnFix.JSON
         {
             writer.WritePropertyName(name);
             JsonSerializer.Serialize(writer, value, _setting);
+        }
+
+        public static void Serialize<T>(Utf8JsonWriter writer, string name, T value, JsonSerializerOptions options)
+        {
+            writer.WritePropertyName(name);
+            JsonSerializer.Serialize(writer, value, options);
         }
     }
 }

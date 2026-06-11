@@ -7,6 +7,7 @@ namespace ItemSpawnFix.CustomSettings
 {
     public abstract class BaseSpawnData
     {
+        public eDimensionIndex DimensionIndex { get; set; } = eDimensionIndex.Reality;
         public LG_LayerType Layer { get; set; } = LG_LayerType.MainLayer;
         public eLocalZoneIndex LocalIndex { get; set; } = 0;
         public int AreaIndex { get; set; } = 0;
