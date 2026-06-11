@@ -11,6 +11,7 @@ namespace ItemSpawnFix.CustomSettings
         public LG_LayerType Layer { get; set; } = LG_LayerType.MainLayer;
         public eLocalZoneIndex LocalIndex { get; set; } = 0;
         public int AreaIndex { get; set; } = 0;
+        public bool PreferEmpty { get; set; } = true;
         public int Count { get; set; } = 1;
 
         public abstract bool TryGetContainerData([MaybeNullWhen(false)] out ResourceContainerSpawnData data);

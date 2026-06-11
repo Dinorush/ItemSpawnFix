@@ -196,7 +196,7 @@ namespace ItemSpawnFix.Redistribute
                 if (spawn.AreaIndex >= 0 && spawn.AreaIndex < zone.m_areas.Count)
                 {
                     var node = zone.m_areas[spawn.AreaIndex].m_courseNode;
-                    if (_nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(tempList, trackers, empty: true))
+                    if (spawn.PreferEmpty && _nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(tempList, trackers, empty: true))
                         continue;
 
                     if (_nodeTrackers.TryGetValue(node.NodeID, out trackers) && TryRedistributeToList(tempList, trackers, empty: false))
@@ -208,14 +208,14 @@ namespace ItemSpawnFix.Redistribute
                 else
                     DinoLogger.Error($"Set spawn has area index {spawn.AreaIndex}, but zone max index is {zone.m_areas.Count - 1}! Defaulting to zone spawn...");
 
-                if (globalEmpty == null)
+                if (spawn.PreferEmpty && globalEmpty == null)
                 {
                     globalEmpty = new(_nodeTrackersEmpty.Values.Sum(list => list.Count));
                     foreach (var list in _nodeTrackersEmpty.Values)
                         globalEmpty.AddRange(list);
                 }
 
-                if (TryRedistributeToList(tempList, globalEmpty, empty: true))
+                if (spawn.PreferEmpty && TryRedistributeToList(tempList, globalEmpty!, empty: true))
                     continue;
 
                 if (global == null)
