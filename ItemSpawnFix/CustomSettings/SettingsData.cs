@@ -33,7 +33,8 @@ namespace ItemSpawnFix.CustomSettings
                 {
                     new ResourceSpawnData()
                     {
-                        PackType = eResourceContainerSpawnType.AmmoWeapon
+                        PackType = eResourceContainerSpawnType.AmmoWeapon,
+                        AreaIndex = new int[] { 0, 1 }
                     }
                 }
             },

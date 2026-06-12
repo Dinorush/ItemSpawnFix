@@ -193,20 +193,30 @@ namespace ItemSpawnFix.Redistribute
                 if (!spawn.TryGetContainerData(out var containerData)) continue;
 
                 tempList.Add(containerData);
-                if (spawn.AreaIndex >= 0 && spawn.AreaIndex < zone.m_areas.Count)
+                int[] areaList = spawn.AreaIndex;
+                if (spawn.AreaIndex.Length > 1)
                 {
-                    var node = zone.m_areas[spawn.AreaIndex].m_courseNode;
-                    if (spawn.PreferEmpty && _nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(tempList, trackers, empty: true))
-                        continue;
-
-                    if (_nodeTrackers.TryGetValue(node.NodeID, out trackers) && TryRedistributeToList(tempList, trackers, empty: false))
-                        continue;
-
-                    if (Configuration.ShowDebugMessages)
-                        DinoLogger.Log($"No room for set spawn [{containerData.m_type}, {containerData.m_ammo}] in {zone.NavInfo.ToString()}{node.m_area.m_navInfo.ToString()}, moving to zone...");
+                    areaList = (int[])areaList.Clone();
+                    Shuffle(areaList);
                 }
-                else
-                    DinoLogger.Error($"Set spawn has area index {spawn.AreaIndex}, but zone max index is {zone.m_areas.Count - 1}! Defaulting to zone spawn...");
+
+                foreach (var index in areaList)
+                {
+                    if (index >= 0 && index < zone.m_areas.Count)
+                    {
+                        var node = zone.m_areas[index].m_courseNode;
+                        if (spawn.PreferEmpty && _nodeTrackersEmpty.TryGetValue(node.NodeID, out var trackers) && TryRedistributeToList(tempList, trackers, empty: true))
+                            continue;
+
+                        if (_nodeTrackers.TryGetValue(node.NodeID, out trackers) && TryRedistributeToList(tempList, trackers, empty: false))
+                            continue;
+
+                        if (Configuration.ShowDebugMessages)
+                            DinoLogger.Log($"No room for set spawn [{containerData.m_type}, {containerData.m_ammo}] in {zone.NavInfo.ToString()}{node.m_area.m_navInfo.ToString()}, trying next area...");
+                    }
+                    else
+                        DinoLogger.Error($"Set spawn has area index {index}, but zone max index is {zone.m_areas.Count - 1}! Trying next area...");
+                }
 
                 if (spawn.PreferEmpty && globalEmpty == null)
                 {

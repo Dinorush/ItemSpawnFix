@@ -14,7 +14,7 @@ namespace ItemSpawnFix.JSON.Converters
 
             SettingsData data = new();
 
-            if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("Expected Trigger Coordinator to be either a string or object");
+            if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("Expected SettingsData to be either a string or object");
 
             // Full object case
             while (reader.Read())

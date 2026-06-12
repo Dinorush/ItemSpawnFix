@@ -1,7 +1,10 @@
 ﻿using GameData;
+using ItemSpawnFix.JSON.Converters;
 using ItemSpawnFix.Redistribute;
 using LevelGeneration;
+using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
 
 namespace ItemSpawnFix.CustomSettings
 {
@@ -10,7 +13,8 @@ namespace ItemSpawnFix.CustomSettings
         public eDimensionIndex DimensionIndex { get; set; } = eDimensionIndex.Reality;
         public LG_LayerType Layer { get; set; } = LG_LayerType.MainLayer;
         public eLocalZoneIndex LocalIndex { get; set; } = 0;
-        public int AreaIndex { get; set; } = 0;
+        [JsonConverter(typeof(OptionalArrayConverter<int>))]
+        public int[] AreaIndex { get; set; } = Array.Empty<int>();
         public bool PreferEmpty { get; set; } = true;
         public int Count { get; set; } = 1;
 

@@ -45,6 +45,11 @@ namespace ItemSpawnFix.JSON
             JsonSerializer.Serialize(writer, value, _setting);
         }
 
+        public static void Serialize<T>(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+        {
+            JsonSerializer.Serialize(writer, value, options);
+        }
+
         public static void Serialize<T>(Utf8JsonWriter writer, string name, T value)
         {
             writer.WritePropertyName(name);
